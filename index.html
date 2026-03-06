@@ -478,7 +478,7 @@ async function aplicarJurosMensaisAuto(uid) {
     const hist = document.getElementById('emp-hist-' + uid);
     if (exib) exib.textContent = fmt(novoSaldo);
     if (inp)  inp.value = novoSaldo.toFixed(2);
-    if (hist) hist.innerHTML = renderEmpHistorico(novoHist);
+    if (hist) hist.innerHTML = renderEmpHistorico(novoHist, uid);
   } catch(e) { /* silencioso */ }
 }
 
@@ -672,7 +672,7 @@ function renderClientes(clientes) {
         <div style="margin-top:18px;">
           <div class="cr-section-title">📜 Histórico de Transações</div>
           <div id="emp-hist-${c.id}" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;">
-            ${renderEmpHistorico(c.historicoEmp || [])}
+            ${renderEmpHistorico(c.historicoEmp || [], c.id)}
           </div>
         </div>
       </div>
@@ -760,16 +760,23 @@ function renderClientes(clientes) {
         <!-- HISTÓRICO -->
         <div style="margin-top:14px;">
           <div style="font-size:11px;color:#5a8ab0;font-family:'Montserrat',sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">📜 Histórico de Depósitos</div>
-          <div style="max-height:140px;overflow-y:auto;">
+          <div id="hist-caixinha-${c.id}" style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">
             ${depositosCaixinha.length === 0 ? '<div style="font-size:12px;color:#90b8d4;padding:8px;">Nenhum depósito registrado.</div>' :
-              depositosCaixinha.map(dep => {
+              depositosCaixinha.map((dep, idx) => {
                 const dataDep = new Date(dep.data);
                 const diffDias = (new Date() - dataDep) / (1000*60*60*24);
                 const mesesC = Math.floor(diffDias / 30);
                 const rendDep = mesesC >= 1 ? dep.valor * (Math.pow(1.02, mesesC) - 1) : 0;
-                return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:#f0f8ff;border-radius:4px;margin-bottom:4px;font-size:12px;">
-                  <span style="color:#0a3d6b;">${dep.data} — <strong>${fmt(dep.valor)}</strong></span>
-                  <span style="color:#c9a84c;">${mesesC >= 1 ? '+' + fmt(rendDep) : '⏳ &lt;1 mês'}</span>
+                return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:#f0f8ff;border:1px solid #ddeefa;border-radius:6px;font-size:12px;gap:6px;">
+                  <div style="flex:1;">
+                    <span style="color:#0a3d6b;font-weight:700;">${dep.data}</span>
+                    <span style="color:#0a3d6b;"> — <strong>${fmt(dep.valor)}</strong></span>
+                    <span style="color:#c9a84c;margin-left:6px;">${mesesC >= 1 ? '📈 +' + fmt(rendDep) : '⏳ &lt;1 mês'}</span>
+                  </div>
+                  <div style="display:flex;gap:4px;flex-shrink:0;">
+                    <button onclick="editarDepositoCaixinha('${c.id}',${idx})" title="Editar" style="background:#f0f8ff;border:1px solid #b3d9f5;border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;color:#1a6bbf;">✏️</button>
+                    <button onclick="excluirDepositoCaixinha('${c.id}',${idx})" title="Excluir" style="background:#fff1f1;border:1px solid #fca5a5;border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;color:#b91c1c;">🗑️</button>
+                  </div>
                 </div>`;
               }).join('')
             }
@@ -827,10 +834,10 @@ window.atualizarExibDevedor = function(uid) {
 };
 
 // ── RENDERIZAR HISTÓRICO EMPRÉSTIMO ──
-function renderEmpHistorico(hist) {
+function renderEmpHistorico(hist, uid) {
   if (!hist || !hist.length) return '<div style="font-size:12px;color:#90b8d4;padding:8px;">Nenhuma transação registrada.</div>';
   const sorted = [...hist].sort((a,b) => (b.dataISO||'').localeCompare(a.dataISO||''));
-  return sorted.map(t => {
+  return sorted.map((t, i) => {
     const isEmp   = t.tipo === 'emprestimo';
     const isPgto  = t.tipo === 'pagamento';
     const isJuros = t.tipo === 'juros';
@@ -840,16 +847,174 @@ function renderEmpHistorico(hist) {
     const icone   = isEmp ? '📋' : isJuros ? '💸' : '💳';
     const label   = isEmp ? 'Empréstimo concedido' : isJuros ? 'Juros 10%' : `Pagamento${t.desconto ? ' c/ desconto' : ''}`;
     const sinal   = isPgto ? '−' : '+';
+    // Índice real no array original (não no sorted)
+    const idxReal = hist.indexOf(t);
     return `<div style="background:${bg};border:1px solid ${borda};border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
       <div style="flex:1;min-width:0;">
         <div style="font-size:12px;font-weight:800;color:${cor};font-family:'Montserrat',sans-serif;">${icone} ${label}</div>
         ${t.obs ? `<div style="font-size:12px;color:#0a3d6b;font-weight:600;margin-top:2px;">📝 ${t.obs}</div>` : ''}
         <div style="font-size:11px;color:#5a8ab0;margin-top:2px;">📅 ${t.data || '—'}</div>
       </div>
-      <div style="font-size:16px;font-weight:900;color:${cor};white-space:nowrap;">${sinal} ${fmt(t.valor)}</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="font-size:16px;font-weight:900;color:${cor};white-space:nowrap;">${sinal} ${fmt(t.valor)}</div>
+        ${uid ? `
+        <button onclick="editarTransacaoEmp('${uid}',${idxReal})" title="Editar" style="background:#f0f8ff;border:1px solid #b3d9f5;border-radius:5px;padding:4px 8px;font-size:12px;cursor:pointer;color:#1a6bbf;">✏️</button>
+        <button onclick="excluirTransacaoEmp('${uid}',${idxReal})" title="Excluir" style="background:#fff1f1;border:1px solid #fca5a5;border-radius:5px;padding:4px 8px;font-size:12px;cursor:pointer;color:#b91c1c;">🗑️</button>
+        ` : ''}
+      </div>
     </div>`;
   }).join('');
 }
+
+// ══════════════════════════════════════════
+// ── EDITAR / EXCLUIR TRANSAÇÃO EMPRÉSTIMO ──
+// ══════════════════════════════════════════
+window.editarTransacaoEmp = async function(uid, idx) {
+  try {
+    const { getFirestore, doc, getDoc, updateDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    const db2 = getFirestore();
+    const snap = await getDoc(doc(db2, 'clientes', uid));
+    const hist = snap.data()?.historicoEmp || [];
+    const t = hist[idx];
+    if (!t) return;
+    const novoValor = parseFloat(prompt(`Valor atual: R$ ${t.valor}\nNovo valor (R$):`, t.valor));
+    if (isNaN(novoValor) || novoValor === null) return;
+    const novaData = prompt(`Data atual: ${t.data}\nNova data (DD/MM/AAAA):`, t.data);
+    if (novaData === null) return;
+    const novaObs = prompt(`Observação atual: ${t.obs || ''}\nNova observação:`, t.obs || '');
+    hist[idx].valor = novoValor;
+    hist[idx].data  = novaData || t.data;
+    if (novaObs !== null) hist[idx].obs = novaObs;
+    await updateDoc(doc(db2, 'clientes', uid), { historicoEmp: hist });
+    const histEl = document.getElementById('emp-hist-' + uid);
+    if (histEl) histEl.innerHTML = renderEmpHistorico(hist, uid);
+  } catch(e) { alert('Erro: ' + e.message); }
+};
+
+window.excluirTransacaoEmp = async function(uid, idx) {
+  if (!confirm('Excluir esta transação do histórico?')) return;
+  try {
+    const { getFirestore, doc, getDoc, updateDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    const db2 = getFirestore();
+    const snap = await getDoc(doc(db2, 'clientes', uid));
+    const hist = snap.data()?.historicoEmp || [];
+    hist.splice(idx, 1);
+    await updateDoc(doc(db2, 'clientes', uid), { historicoEmp: hist });
+    const histEl = document.getElementById('emp-hist-' + uid);
+    if (histEl) histEl.innerHTML = renderEmpHistorico(hist, uid);
+  } catch(e) { alert('Erro: ' + e.message); }
+};
+
+// ══════════════════════════════════════════
+// ── EDITAR / EXCLUIR DEPÓSITO CAIXINHA ──
+// ══════════════════════════════════════════
+window.editarDepositoCaixinha = async function(uid, idx) {
+  try {
+    const { getFirestore, doc, getDoc, updateDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    const db2 = getFirestore();
+    const snap = await getDoc(doc(db2, 'clientes', uid));
+    const deps = snap.data()?.depositosCaixinha || [];
+    const dep = deps[idx];
+    if (!dep) return;
+    const novoValor = parseFloat(prompt(`Valor atual: R$ ${dep.valor}\nNovo valor (R$):`, dep.valor));
+    if (isNaN(novoValor) || novoValor <= 0) return;
+    const novaData = prompt(`Data atual: ${dep.data}\nNova data (AAAA-MM-DD):`, dep.data);
+    if (novaData === null) return;
+    deps[idx].valor = novoValor;
+    deps[idx].data  = novaData || dep.data;
+    // Recalcula saldo
+    const novoSaldo = deps.reduce((s, d) => s + d.valor, 0);
+    await updateDoc(doc(db2, 'clientes', uid), { depositosCaixinha: deps, saldoCaixinha: novoSaldo });
+    // Atualiza UI
+    const exib = document.getElementById('exib-saldo-' + uid);
+    if (exib) exib.textContent = fmt(novoSaldo);
+    // Re-renderiza histórico
+    const histEl = document.getElementById('hist-caixinha-' + uid);
+    if (histEl) {
+      const hoje = new Date();
+      histEl.innerHTML = deps.map((d, i) => {
+        const dataDep = new Date(d.data);
+        const diffDias = (hoje - dataDep) / (1000*60*60*24);
+        const mesesC = Math.floor(diffDias / 30);
+        const rendDep = mesesC >= 1 ? d.valor * (Math.pow(1.02, mesesC) - 1) : 0;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:#f0f8ff;border:1px solid #ddeefa;border-radius:6px;font-size:12px;gap:6px;">
+          <div style="flex:1;"><span style="color:#0a3d6b;font-weight:700;">${d.data}</span><span style="color:#0a3d6b;"> — <strong>${fmt(d.valor)}</strong></span><span style="color:#c9a84c;margin-left:6px;">${mesesC >= 1 ? '📈 +' + fmt(rendDep) : '⏳ <1 mês'}</span></div>
+          <div style="display:flex;gap:4px;flex-shrink:0;">
+            <button onclick="editarDepositoCaixinha('${uid}',${i})" style="background:#f0f8ff;border:1px solid #b3d9f5;border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;color:#1a6bbf;">✏️</button>
+            <button onclick="excluirDepositoCaixinha('${uid}',${i})" style="background:#fff1f1;border:1px solid #fca5a5;border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;color:#b91c1c;">🗑️</button>
+          </div>
+        </div>`;
+      }).join('') || '<div style="font-size:12px;color:#90b8d4;padding:8px;">Nenhum depósito registrado.</div>';
+    }
+    alert('✅ Depósito atualizado!');
+  } catch(e) { alert('Erro: ' + e.message); }
+};
+
+window.excluirDepositoCaixinha = async function(uid, idx) {
+  if (!confirm('Excluir este depósito? O saldo será recalculado.')) return;
+  try {
+    const { getFirestore, doc, getDoc, updateDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    const db2 = getFirestore();
+    const snap = await getDoc(doc(db2, 'clientes', uid));
+    const deps = snap.data()?.depositosCaixinha || [];
+    deps.splice(idx, 1);
+    const novoSaldo = deps.reduce((s, d) => s + d.valor, 0);
+    await updateDoc(doc(db2, 'clientes', uid), { depositosCaixinha: deps, saldoCaixinha: novoSaldo });
+    const exib = document.getElementById('exib-saldo-' + uid);
+    if (exib) exib.textContent = fmt(novoSaldo);
+    const histEl = document.getElementById('hist-caixinha-' + uid);
+    if (histEl) {
+      const hoje = new Date();
+      histEl.innerHTML = deps.map((d, i) => {
+        const dataDep = new Date(d.data);
+        const diffDias = (hoje - dataDep) / (1000*60*60*24);
+        const mesesC = Math.floor(diffDias / 30);
+        const rendDep = mesesC >= 1 ? d.valor * (Math.pow(1.02, mesesC) - 1) : 0;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:#f0f8ff;border:1px solid #ddeefa;border-radius:6px;font-size:12px;gap:6px;">
+          <div style="flex:1;"><span style="color:#0a3d6b;font-weight:700;">${d.data}</span><span style="color:#0a3d6b;"> — <strong>${fmt(d.valor)}</strong></span><span style="color:#c9a84c;margin-left:6px;">${mesesC >= 1 ? '📈 +' + fmt(rendDep) : '⏳ <1 mês'}</span></div>
+          <div style="display:flex;gap:4px;flex-shrink:0;">
+            <button onclick="editarDepositoCaixinha('${uid}',${i})" style="background:#f0f8ff;border:1px solid #b3d9f5;border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;color:#1a6bbf;">✏️</button>
+            <button onclick="excluirDepositoCaixinha('${uid}',${i})" style="background:#fff1f1;border:1px solid #fca5a5;border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;color:#b91c1c;">🗑️</button>
+          </div>
+        </div>`;
+      }).join('') || '<div style="font-size:12px;color:#90b8d4;padding:8px;">Nenhum depósito registrado.</div>';
+    }
+  } catch(e) { alert('Erro: ' + e.message); }
+};
+
+// ══════════════════════════════════════════
+// ── EDITAR / EXCLUIR PAGAMENTO INADIMPLENTE ──
+// ══════════════════════════════════════════
+window.editarPagamentoInad = async function(inadId, pidx) {
+  await carregarInadimplentes();
+  const inad = inadData.find(i => i.id === inadId);
+  if (!inad) return;
+  const p = inad.pagamentos[pidx];
+  if (!p) return;
+  const novoValor = parseFloat(prompt(`Valor atual: R$ ${p.valor}\nNovo valor (R$):`, p.valor));
+  if (isNaN(novoValor) || novoValor <= 0) return;
+  const novaData = prompt(`Data atual: ${p.data}\nNova data:`, p.data);
+  if (novaData === null) return;
+  // Recalcula totalPago
+  const velhoValor = p.valor;
+  inad.pagamentos[pidx].valor = novoValor;
+  inad.pagamentos[pidx].data  = novaData || p.data;
+  inad.totalPago = (inad.totalPago || 0) - velhoValor + novoValor;
+  await salvarInadimplentes();
+  renderInadimplentes();
+};
+
+window.excluirPagamentoInad = async function(inadId, pidx) {
+  if (!confirm('Excluir este pagamento? O total pago será recalculado.')) return;
+  await carregarInadimplentes();
+  const inad = inadData.find(i => i.id === inadId);
+  if (!inad) return;
+  const valorRemovido = inad.pagamentos[pidx]?.valor || 0;
+  inad.pagamentos.splice(pidx, 1);
+  inad.totalPago = Math.max(0, (inad.totalPago || 0) - valorRemovido);
+  await salvarInadimplentes();
+  renderInadimplentes();
+};
 
 // ── TOGGLE TIPO EMPRÉSTIMO ──
 window.toggleTipoEmp = function(uid) {
@@ -928,7 +1093,7 @@ window.pagarEmprestimo = async function(uid) {
     const novoHist = [...histAtual, ...novasTransacoes];
     await updateDoc(doc(db2, 'clientes', uid), { saldoDevedor: novoSaldo, historicoEmp: novoHist });
     const histEl = document.getElementById('emp-hist-' + uid);
-    if (histEl) histEl.innerHTML = renderEmpHistorico(novoHist);
+    if (histEl) histEl.innerHTML = renderEmpHistorico(novoHist, uid);
     const msg = document.getElementById('msg-emp-' + uid);
     msg.style.display = 'inline-block'; msg.classList.add('show');
     setTimeout(() => { msg.classList.remove('show'); msg.style.display = 'none'; }, 3000);
@@ -1078,7 +1243,7 @@ window.salvarEmprestimo = async function(uid) {
     const numParcelasSave = tipoEmpSave === 'parcelado' ? (parseInt(document.getElementById('num-parcelas-' + uid)?.value) || 0) : 0;
     await updateDoc(doc(db2, 'clientes', uid), { saldoDevedor: saldoFinal, parcelaEmprestimo: parcela, dataEmprestimo: dataEmp, historicoEmp: novoHist, tipoEmprestimo: tipoEmpSave, jurosPct: jurosPctSave, numParcelas: numParcelasSave });
     const histEl = document.getElementById('emp-hist-' + uid);
-    if (histEl) histEl.innerHTML = renderEmpHistorico(novoHist);
+    if (histEl) histEl.innerHTML = renderEmpHistorico(novoHist, uid);
     const msg = document.getElementById('msg-emp-save-' + uid);
     msg.classList.add('show'); setTimeout(() => msg.classList.remove('show'), 3000);
   } catch(e) { alert('Erro ao salvar: ' + e.message); }
@@ -2383,11 +2548,17 @@ function renderInadimplentes() {
       ${parcelas.length ? `
         <div style="margin-bottom:10px;">
           <div style="font-size:11px;color:#5a8ab0;font-family:'Montserrat',sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">📜 Histórico de pagamentos</div>
-          <div style="max-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">
-            ${parcelas.map(p => `
-              <div style="display:flex;justify-content:space-between;background:#f0f8ff;border-radius:5px;padding:7px 10px;font-size:12px;">
-                <span style="color:#5a8ab0;">${p.data}</span>
-                <span style="color:${p.desconto ? '#c9a84c' : '#3fb950'};font-weight:700;">${fmtAdm(p.valor)} ${p.desconto ? '(c/ desconto)' : ''}</span>
+          <div style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">
+            ${parcelas.map((p, pidx) => `
+              <div style="display:flex;justify-content:space-between;align-items:center;background:#f0f8ff;border:1px solid #ddeefa;border-radius:6px;padding:7px 10px;font-size:12px;gap:6px;">
+                <div style="flex:1;">
+                  <span style="color:#5a8ab0;">${p.data}</span>
+                  <span style="color:${p.desconto ? '#c9a84c' : '#3fb950'};font-weight:700;margin-left:8px;">${fmtAdm(p.valor)} ${p.desconto ? '(c/ desconto)' : ''}</span>
+                </div>
+                <div style="display:flex;gap:4px;flex-shrink:0;">
+                  <button onclick="editarPagamentoInad(${inad.id},${pidx})" title="Editar" style="background:#f0f8ff;border:1px solid #b3d9f5;border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;color:#1a6bbf;">✏️</button>
+                  <button onclick="excluirPagamentoInad(${inad.id},${pidx})" title="Excluir" style="background:#fff1f1;border:1px solid #fca5a5;border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;color:#b91c1c;">🗑️</button>
+                </div>
               </div>
             `).join('')}
           </div>
